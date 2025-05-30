@@ -8,60 +8,15 @@ from collections import Counter
 import warnings
 import logging
 
-# Configure NLTK downloads first
-import nltk
-import ssl
-
-try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
-
-# Download required NLTK data with better error handling
-def download_nltk_data():
-    """Download required NLTK data with proper error handling."""
-    required_packages = [
-        ('tokenizers/punkt', 'punkt'),
-        ('corpora/stopwords', 'stopwords'),
-        ('corpora/wordnet', 'wordnet')
-    ]
-    
-    for data_path, package_name in required_packages:
-        try:
-            nltk.data.find(data_path)
-            print(f"NLTK {package_name} already downloaded")
-        except LookupError:
-            print(f"Downloading NLTK {package_name}...")
-            try:
-                nltk.download(package_name, quiet=True)
-                print(f"Successfully downloaded NLTK {package_name}")
-            except Exception as e:
-                print(f"Failed to download NLTK {package_name}: {e}")
-                print("You may need to download manually or check your internet connection")
-
-# Download NLTK data
-download_nltk_data()
-
-# Now import NLTK components
-try:
-    from nltk.corpus import stopwords
-    from nltk.tokenize import word_tokenize
-    from nltk.stem import WordNetLemmatizer
-except ImportError as e:
-    print(f"NLTK import error: {e}")
-    print("Please ensure NLTK is properly installed: pip install nltk")
-
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
-class FinancialTextAnalyzer:
-    """Class to perform text analysis and topic modeling on financial news data."""
+class SimpleFinancialTextAnalyzer:
+    """Simple text analyzer that doesn't require NLTK downloads."""
     
     def __init__(self, data: pd.DataFrame, text_column: str = 'headline'):
         """
-        Initialize the text analyzer.
+        Initialize the simple text analyzer.
         
         Args:
             data (pd.DataFrame): The financial news dataset
@@ -70,22 +25,16 @@ class FinancialTextAnalyzer:
         self.data = data.copy()
         self.text_column = text_column
         
-        # Initialize NLTK components with error handling
-        try:
-            self.lemmatizer = WordNetLemmatizer()
-            self.stop_words = set(stopwords.words('english'))
-        except Exception as e:
-            print(f"Error initializing NLTK components: {e}")
-            print("Using basic preprocessing without lemmatization and stop words")
-            self.lemmatizer = None
-            self.stop_words = set()
-        
-        # Add financial stop words
-        financial_stop_words = {
-            'stock', 'share', 'company', 'market', 'trading', 'price',
-            'nasdaq', 'nyse', 'inc', 'corp', 'ltd', 'llc', 'co'
+        # Basic stop words (common English words to filter out)
+        self.stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+            'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+            'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can',
+            'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
+            'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'its', 'our', 'their',
+            'stock', 'share', 'company', 'market', 'trading', 'price', 'nasdaq', 'nyse',
+            'inc', 'corp', 'ltd', 'llc', 'co', 'from', 'as', 'more', 'than', 'into', 'up'
         }
-        self.stop_words.update(financial_stop_words)
         
         # Financial keywords and phrases to track
         self.financial_keywords = {
@@ -101,7 +50,7 @@ class FinancialTextAnalyzer:
         
     def preprocess_text(self, text: str) -> List[str]:
         """
-        Preprocess text for analysis with fallback for NLTK issues.
+        Simple text preprocessing without NLTK.
         
         Args:
             text (str): Raw text to preprocess
@@ -115,27 +64,15 @@ class FinancialTextAnalyzer:
         # Convert to lowercase
         text = text.lower()
         
-        # Remove special characters and numbers
+        # Remove special characters and numbers, keep only letters and spaces
         text = re.sub(r'[^a-zA-Z\s]', ' ', text)
         
-        # Tokenize with fallback
-        try:
-            tokens = word_tokenize(text)
-        except Exception as e:
-            print(f"NLTK tokenization failed, using basic split: {e}")
-            # Fallback to basic splitting
-            tokens = text.split()
+        # Split into tokens
+        tokens = text.split()
         
-        # Remove stop words and short words with lemmatization fallback
-        processed_tokens = []
-        for token in tokens:
-            if token not in self.stop_words and len(token) > 2:
-                if self.lemmatizer:
-                    try:
-                        token = self.lemmatizer.lemmatize(token)
-                    except Exception:
-                        pass  # Use original token if lemmatization fails
-                processed_tokens.append(token)
+        # Remove stop words and short words
+        processed_tokens = [token for token in tokens 
+                          if token not in self.stop_words and len(token) > 2]
         
         return processed_tokens
     
