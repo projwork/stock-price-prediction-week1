@@ -138,17 +138,3 @@ python run_eda.py
 3. **Time Series Insights**: Publication patterns, spike detection
 4. **Publisher Intelligence**: Source analysis and credibility metrics
 5. **Trading Recommendations**: Actionable insights for automated systems
-
-## 🔧 Customization
-
-### Adjusting Analysis Parameters
-
-#### Text Analysis
-
-```python
-# Modify financial keyword categories
-financial_keywords = {
-    'earnings': ['earnings', 'eps', 'profit', 'revenue'],
-    'custom_category': ['your', 'keywords', 'here']
-}
-```
