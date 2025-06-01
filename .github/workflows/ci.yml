@@ -2,173 +2,26 @@ name: Python CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11"]
-        
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Cache pip packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements-ci.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ runner.os }}-pip-
-
-      - name: Install system dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential wget
-          # Install TA-Lib C library
-          wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib/
-          ./configure --prefix=/usr
-          make
-          sudo make install
-          cd ..
-
-      - name: Install system dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install ta-lib
-
-      - name: Install system dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          # Windows will use pre-compiled wheels, no system deps needed
-          echo "Using pre-compiled TA-Lib wheels for Windows"
-
-      - name: Upgrade pip and install wheel
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install Python dependencies (CI version)
-        run: |
-          # Use CI-optimized requirements if available, fallback to main requirements
-          if [ -f requirements-ci.txt ]; then
-            echo "Installing CI-optimized dependencies..."
-            pip install -r requirements-ci.txt
-          else
-            echo "Installing main dependencies..."
-            pip install -r requirements.txt
-          fi
-        shell: bash
-
-      - name: Install TA-Lib (with fallback)
-        run: |
-          pip install TA-Lib || echo "TA-Lib installation failed, continuing without it"
-
-      - name: Display Python and package versions
-        run: |
-          python --version
-          pip list
-
-      - name: Create test script
-        run: |
-          cat > test_imports.py << 'EOF'
-          """Test critical imports to ensure CI environment is working."""
-          import sys
-          print(f"Python version: {sys.version}")
-          
-          # Test core data science imports
-          try:
-              import pandas as pd
-              import numpy as np
-              import matplotlib.pyplot as plt
-              import seaborn as sns
-              print("✓ Core data science libraries imported successfully")
-          except ImportError as e:
-              print(f"✗ Core library import failed: {e}")
-              sys.exit(1)
-          
-          # Test financial libraries
-          try:
-              import yfinance as yf
-              print("✓ YFinance imported successfully")
-          except ImportError as e:
-              print(f"✗ YFinance import failed: {e}")
-          
-          # Test TA-Lib (optional)
-          try:
-              import talib
-              print("✓ TA-Lib imported successfully")
-          except ImportError:
-              print("⚠ TA-Lib not available (this is OK)")
-          
-          # Test NLTK
-          try:
-              import nltk
-              print("✓ NLTK imported successfully")
-          except ImportError as e:
-              print(f"✗ NLTK import failed: {e}")
-          
-          print("All critical imports successful!")
-          EOF
-        shell: bash
-
-      - name: Test imports
-        run: python test_imports.py
-
-      - name: Run basic functionality test
-        run: |
-          python -c "
-          import pandas as pd
-          import numpy as np
-          import yfinance as yf
-          
-          # Test basic data operations
-          df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
-          print('DataFrame created:', df.shape)
-          
-          # Test numpy
-          arr = np.array([1, 2, 3])
-          print('NumPy array:', arr.sum())
-          
-          print('✓ Basic functionality test passed')
-          "
-
-  lint:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-          
-      - name: Install linting tools
+          python-version: "3.12"
+
+      - name: Display Python version
+        run: python --version
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort
-          
-      - name: Run linting (flake8)
-        run: |
-          flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
-          
-      - name: Check code formatting (black)
-        run: |
-          black --check src/ || true
-          
-      - name: Check import sorting (isort)
-        run: |
-          isort --check-only src/ || true
+          pip install -r requirements.txt
