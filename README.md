@@ -436,3 +436,48 @@ This comprehensive financial analysis framework is ready for:
 - 🔍 **Financial Research**: Academic and professional research
 
 **🚀 Transform your financial analysis with professional-grade tools and insights!**
+cd scripts
+python run_comprehensive_eda.py
+
+````
+
+#### Option 3: Basic EDA Only
+
+```bash
+cd scripts
+python run_eda.py
+````
+
+## 📈 Key Features for Trading Systems
+
+### Market Event Detection
+
+- **Spike Detection Algorithm**: Identifies days with abnormally high news volume
+- **Threshold**: Configurable standard deviation-based detection
+- **Event Correlation**: Links publication spikes to potential market events
+
+### Timing Analysis
+
+- **Market Hours Coverage**: Tracks what percentage of news breaks during trading hours
+- **Pre-Market Intelligence**: Analyzes overnight and pre-market news flow
+- **Minute-Level Patterns**: Identifies optimal news monitoring times
+
+### Source Credibility
+
+- **Publisher Reputation**: Distinguishes between major financial news and individual contributors
+- **Domain Classification**: Categorizes news sources by organization type
+- **Content Specialization**: Maps publishers to their content focus areas
+
+### Sentiment Intelligence
+
+- **Financial Sentiment Keywords**: Custom financial vocabulary for sentiment analysis
+- **Event Classification**: Categorizes news by type (earnings, M&A, regulatory, etc.)
+- **Impact Assessment**: Measures sentiment distribution across news volume
+
+### Analysis Sections Include:
+
+1. **Dataset Overview**: Volume, date range, coverage statistics
+2. **Text Analysis**: Keywords, phrases, sentiment distribution
+3. **Time Series Insights**: Publication patterns, spike detection
+4. **Publisher Intelligence**: Source analysis and credibility metrics
+5. **Trading Recommendations**: Actionable insights for automated systems
