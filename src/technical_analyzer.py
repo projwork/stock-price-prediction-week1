@@ -53,12 +53,12 @@ class TechnicalAnalyzer:
         # Prepare data
         self.prepare_data()
         
-        # Extract price arrays for TA-Lib
-        self.open_prices = self.data[self.open_col].values
-        self.high_prices = self.data[self.high_col].values
-        self.low_prices = self.data[self.low_col].values
-        self.close_prices = self.data[self.close_col].values
-        self.volumes = self.data[self.volume_col].values
+        # Extract price arrays for TA-Lib (ensure float64 type)
+        self.open_prices = self.data[self.open_col].astype(np.float64).values
+        self.high_prices = self.data[self.high_col].astype(np.float64).values
+        self.low_prices = self.data[self.low_col].astype(np.float64).values
+        self.close_prices = self.data[self.close_col].astype(np.float64).values
+        self.volumes = self.data[self.volume_col].astype(np.float64).values
         
     def prepare_data(self):
         """Prepare and clean the data"""
@@ -70,8 +70,13 @@ class TechnicalAnalyzer:
         # Sort by date
         self.data.sort_index(inplace=True)
         
-        # Remove any rows with NaN values in OHLCV columns
+        # Convert OHLCV columns to float64 for TA-Lib compatibility
         required_cols = [self.open_col, self.high_col, self.low_col, self.close_col, self.volume_col]
+        for col in required_cols:
+            if col in self.data.columns:
+                self.data[col] = pd.to_numeric(self.data[col], errors='coerce').astype(np.float64)
+        
+        # Remove any rows with NaN values in OHLCV columns
         self.data.dropna(subset=required_cols, inplace=True)
         
         print(f"Data prepared: {len(self.data)} records from {self.data.index.min()} to {self.data.index.max()}")
@@ -90,7 +95,7 @@ class TechnicalAnalyzer:
         
         for period in periods:
             if TALIB_AVAILABLE:
-                ma_data[f'SMA_{period}'] = talib.SMA(self.close_prices, timeperiod=period)
+                ma_data[f'SMA_{period}'] = talib.SMA(self.close_prices.astype(np.float64), timeperiod=period)
             else:
                 # Fallback calculation
                 ma_data[f'SMA_{period}'] = self.data[self.close_col].rolling(window=period).mean()
@@ -111,7 +116,7 @@ class TechnicalAnalyzer:
         
         for period in periods:
             if TALIB_AVAILABLE:
-                ema_data[f'EMA_{period}'] = talib.EMA(self.close_prices, timeperiod=period)
+                ema_data[f'EMA_{period}'] = talib.EMA(self.close_prices.astype(np.float64), timeperiod=period)
             else:
                 # Fallback calculation
                 ema_data[f'EMA_{period}'] = self.data[self.close_col].ewm(span=period).mean()
@@ -129,7 +134,7 @@ class TechnicalAnalyzer:
             Series with RSI values
         """
         if TALIB_AVAILABLE:
-            return pd.Series(talib.RSI(self.close_prices, timeperiod=period), 
+            return pd.Series(talib.RSI(self.close_prices.astype(np.float64), timeperiod=period), 
                            index=self.data.index, name=f'RSI_{period}')
         else:
             # Fallback RSI calculation
@@ -153,7 +158,7 @@ class TechnicalAnalyzer:
             DataFrame with MACD, signal, and histogram
         """
         if TALIB_AVAILABLE:
-            macd, macd_signal, macd_hist = talib.MACD(self.close_prices, 
+            macd, macd_signal, macd_hist = talib.MACD(self.close_prices.astype(np.float64), 
                                                      fastperiod=fast_period,
                                                      slowperiod=slow_period, 
                                                      signalperiod=signal_period)
@@ -188,7 +193,7 @@ class TechnicalAnalyzer:
             DataFrame with Bollinger Bands
         """
         if TALIB_AVAILABLE:
-            upper, middle, lower = talib.BBANDS(self.close_prices, 
+            upper, middle, lower = talib.BBANDS(self.close_prices.astype(np.float64), 
                                               timeperiod=period,
                                               nbdevup=std_dev,
                                               nbdevdn=std_dev)
@@ -220,7 +225,9 @@ class TechnicalAnalyzer:
             DataFrame with %K and %D
         """
         if TALIB_AVAILABLE:
-            slowk, slowd = talib.STOCH(self.high_prices, self.low_prices, self.close_prices,
+            slowk, slowd = talib.STOCH(self.high_prices.astype(np.float64), 
+                                     self.low_prices.astype(np.float64), 
+                                     self.close_prices.astype(np.float64),
                                      fastk_period=k_period, slowk_period=3, slowd_period=d_period)
             return pd.DataFrame({
                 'Stoch_K': slowk,
@@ -249,7 +256,10 @@ class TechnicalAnalyzer:
             Series with ATR values
         """
         if TALIB_AVAILABLE:
-            atr = talib.ATR(self.high_prices, self.low_prices, self.close_prices, timeperiod=period)
+            atr = talib.ATR(self.high_prices.astype(np.float64), 
+                          self.low_prices.astype(np.float64), 
+                          self.close_prices.astype(np.float64), 
+                          timeperiod=period)
             return pd.Series(atr, index=self.data.index, name=f'ATR_{period}')
         else:
             # Fallback calculation
@@ -278,24 +288,91 @@ class TechnicalAnalyzer:
         volume_data['Volume_Ratio'] = self.data[self.volume_col] / volume_data['Volume_SMA_20']
         
         if TALIB_AVAILABLE:
-            # On-Balance Volume
-            volume_data['OBV'] = talib.OBV(self.close_prices, self.volumes)
-            
-            # Accumulation/Distribution Line
-            volume_data['AD'] = talib.AD(self.high_prices, self.low_prices, self.close_prices, self.volumes)
+            try:
+                # Ensure arrays are clean and properly typed
+                close_clean = self.close_prices[~np.isnan(self.close_prices)]
+                volume_clean = self.volumes[~np.isnan(self.volumes)]
+                high_clean = self.high_prices[~np.isnan(self.high_prices)]
+                low_clean = self.low_prices[~np.isnan(self.low_prices)]
+                
+                # Check if we have matching length data
+                min_length = min(len(close_clean), len(volume_clean), len(high_clean), len(low_clean))
+                
+                if min_length > 0:
+                    # On-Balance Volume
+                    obv_result = talib.OBV(self.close_prices.astype(np.float64), 
+                                         self.volumes.astype(np.float64))
+                    volume_data['OBV'] = pd.Series(obv_result, index=self.data.index)
+                    
+                    # Accumulation/Distribution Line
+                    ad_result = talib.AD(self.high_prices.astype(np.float64), 
+                                       self.low_prices.astype(np.float64), 
+                                       self.close_prices.astype(np.float64), 
+                                       self.volumes.astype(np.float64))
+                    volume_data['AD'] = pd.Series(ad_result, index=self.data.index)
+                else:
+                    print("⚠️ Warning: Insufficient clean data for TA-Lib volume indicators, using fallback")
+                    # Use fallback calculation
+                    self._calculate_volume_fallback(volume_data)
+                    
+            except Exception as e:
+                print(f"⚠️ Warning: TA-Lib volume calculation failed ({str(e)}), using fallback")
+                # Use fallback calculation
+                self._calculate_volume_fallback(volume_data)
         else:
-            # Fallback OBV calculation
-            obv = [0]
-            for i in range(1, len(self.data)):
+            # Use fallback calculation
+            self._calculate_volume_fallback(volume_data)
+        
+        return volume_data
+    
+    def _calculate_volume_fallback(self, volume_data: pd.DataFrame):
+        """
+        Fallback volume calculations when TA-Lib fails or is unavailable
+        
+        Args:
+            volume_data: DataFrame to populate with volume indicators
+        """
+        # Fallback OBV calculation
+        obv = [0]
+        for i in range(1, len(self.data)):
+            try:
                 if self.close_prices[i] > self.close_prices[i-1]:
                     obv.append(obv[-1] + self.volumes[i])
                 elif self.close_prices[i] < self.close_prices[i-1]:
                     obv.append(obv[-1] - self.volumes[i])
                 else:
                     obv.append(obv[-1])
-            volume_data['OBV'] = obv
+            except (IndexError, TypeError):
+                obv.append(obv[-1])
         
-        return volume_data
+        volume_data['OBV'] = obv
+        
+        # Fallback A/D Line calculation
+        ad_line = []
+        for i in range(len(self.data)):
+            try:
+                high_val = self.high_prices[i]
+                low_val = self.low_prices[i]
+                close_val = self.close_prices[i]
+                volume_val = self.volumes[i]
+                
+                if high_val != low_val:  # Avoid division by zero
+                    mf_multiplier = ((close_val - low_val) - (high_val - close_val)) / (high_val - low_val)
+                    mf_volume = mf_multiplier * volume_val
+                else:
+                    mf_volume = 0
+                
+                if i == 0:
+                    ad_line.append(mf_volume)
+                else:
+                    ad_line.append(ad_line[-1] + mf_volume)
+            except (IndexError, TypeError, ZeroDivisionError):
+                if i == 0:
+                    ad_line.append(0)
+                else:
+                    ad_line.append(ad_line[-1])
+        
+        volume_data['AD'] = ad_line
     
     def get_comprehensive_technical_analysis(self) -> Dict[str, pd.DataFrame]:
         """
@@ -312,32 +389,85 @@ class TechnicalAnalyzer:
         try:
             # Moving Averages
             print("📈 Calculating Moving Averages...")
-            analysis['moving_averages'] = self.calculate_moving_averages()
-            analysis['ema'] = self.calculate_exponential_moving_averages()
+            try:
+                analysis['moving_averages'] = self.calculate_moving_averages()
+                print("✅ Moving Averages completed")
+            except Exception as e:
+                print(f"❌ Error in Moving Averages: {str(e)}")
+                raise
+            
+            try:
+                analysis['ema'] = self.calculate_exponential_moving_averages()
+                print("✅ EMA completed")
+            except Exception as e:
+                print(f"❌ Error in EMA: {str(e)}")
+                raise
             
             # Momentum Indicators
             print("📊 Calculating Momentum Indicators...")
-            analysis['rsi'] = self.calculate_rsi()
-            analysis['macd'] = self.calculate_macd()
-            analysis['stochastic'] = self.calculate_stochastic_oscillator()
+            try:
+                analysis['rsi'] = self.calculate_rsi()
+                print("✅ RSI completed")
+            except Exception as e:
+                print(f"❌ Error in RSI: {str(e)}")
+                raise
+                
+            try:
+                analysis['macd'] = self.calculate_macd()
+                print("✅ MACD completed")
+            except Exception as e:
+                print(f"❌ Error in MACD: {str(e)}")
+                raise
+                
+            try:
+                analysis['stochastic'] = self.calculate_stochastic_oscillator()
+                print("✅ Stochastic completed")
+            except Exception as e:
+                print(f"❌ Error in Stochastic: {str(e)}")
+                raise
             
             # Volatility Indicators
             print("📉 Calculating Volatility Indicators...")
-            analysis['bollinger_bands'] = self.calculate_bollinger_bands()
-            analysis['atr'] = self.calculate_atr()
+            try:
+                analysis['bollinger_bands'] = self.calculate_bollinger_bands()
+                print("✅ Bollinger Bands completed")
+            except Exception as e:
+                print(f"❌ Error in Bollinger Bands: {str(e)}")
+                raise
+                
+            try:
+                analysis['atr'] = self.calculate_atr()
+                print("✅ ATR completed")
+            except Exception as e:
+                print(f"❌ Error in ATR: {str(e)}")
+                raise
             
             # Volume Indicators
             print("📊 Calculating Volume Indicators...")
-            analysis['volume'] = self.calculate_volume_indicators()
+            try:
+                analysis['volume'] = self.calculate_volume_indicators()
+                print("✅ Volume indicators completed")
+            except Exception as e:
+                print(f"❌ Error in Volume Indicators: {str(e)}")
+                raise
             
             # Support and Resistance Levels
             print("🎯 Calculating Support and Resistance...")
-            analysis['support_resistance'] = self.calculate_support_resistance()
+            try:
+                analysis['support_resistance'] = self.calculate_support_resistance()
+                print("✅ Support/Resistance completed")
+            except Exception as e:
+                print(f"❌ Error in Support/Resistance: {str(e)}")
+                raise
             
             print("✅ Technical analysis completed successfully!")
             
         except Exception as e:
             print(f"❌ Error in technical analysis: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Return partial results if available
+            return analysis
             
         return analysis
     
