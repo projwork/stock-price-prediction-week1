@@ -10,7 +10,7 @@ Date: 2024
 
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import pytz
 from typing import Dict, List, Tuple, Optional
 import warnings
@@ -38,7 +38,7 @@ class DateAligner:
         
     def normalize_news_dates(self, news_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Normalize news dataset dates to market timezone and trading days.
+        Normalize news dataset dates.
         
         Args:
             news_df: DataFrame with news data
@@ -50,19 +50,73 @@ class DateAligner:
         
         # Convert date column to datetime if not already
         if not pd.api.types.is_datetime64_any_dtype(news_df[self.news_date_column]):
-            news_df[self.news_date_column] = pd.to_datetime(news_df[self.news_date_column])
+            print(f"🔄 Converting {self.news_date_column} to datetime format...")
+            
+            # Simple, robust datetime conversion
+            try:
+                # Method 1: Try parsing without UTC first (handles mixed timezone formats better)
+                news_df[self.news_date_column] = pd.to_datetime(news_df[self.news_date_column], 
+                                                               errors='coerce')
+                
+                # Check success rate
+                null_count = news_df[self.news_date_column].isnull().sum()
+                success_count = len(news_df) - null_count
+                
+                print(f"✅ Initial parsing: {success_count}/{len(news_df)} dates converted")
+                
+                # Convert timezone-aware dates to target timezone, localize timezone-naive dates
+                if success_count > 0:
+                    datetime_col = news_df[self.news_date_column]
+                    
+                    # Check if the series has timezone info
+                    if datetime_col.dt.tz is not None:
+                        # Convert timezone-aware dates to target timezone
+                        news_df[self.news_date_column] = datetime_col.dt.tz_convert(self.timezone)
+                        print(f"✅ Converted timezone-aware dates to {self.timezone}")
+                    else:
+                        # Localize timezone-naive dates to target timezone
+                        news_df[self.news_date_column] = datetime_col.dt.tz_localize(self.timezone)
+                        print(f"✅ Localized timezone-naive dates to {self.timezone}")
+                    
+                    print(f"✅ Timezone conversion completed")
+                
+                if null_count > 0:
+                    print(f"⚠️ Removing {null_count} rows with invalid dates...")
+                    news_df = news_df.dropna(subset=[self.news_date_column])
+                
+            except Exception as e:
+                print(f"❌ Datetime conversion failed: {e}")
+                raise ValueError(f"Could not convert {self.news_date_column} to datetime")
+        
+        # Check for successful datetime conversion
+        datetime_col = news_df[self.news_date_column]
+        null_count = datetime_col.isnull().sum()
+        total_count = len(datetime_col)
+        
+        print(f"📊 Datetime conversion result: {total_count - null_count}/{total_count} successful conversions")
+        
+        if null_count > 0:
+            print(f"⚠️ Warning: {null_count} dates could not be converted. Removing invalid entries...")
+            # Remove rows with invalid dates
+            news_df = news_df.dropna(subset=[self.news_date_column])
+            datetime_col = news_df[self.news_date_column]
+        
+        # Verify we have datetime data before using .dt accessor
+        if not pd.api.types.is_datetime64_any_dtype(datetime_col):
+            raise ValueError(f"Failed to convert {self.news_date_column} to datetime format. "
+                           f"Data type: {datetime_col.dtype}")
         
         # Extract date part (remove time component for daily alignment)
-        news_df['aligned_date'] = news_df[self.news_date_column].dt.date
+        news_df['aligned_date'] = datetime_col.dt.date
         
         # Convert to trading date (if weekend, move to next Monday)
         news_df['trading_date'] = news_df['aligned_date'].apply(self._adjust_to_trading_day)
         
         # Add additional temporal features
-        news_df['hour'] = news_df[self.news_date_column].dt.hour
-        news_df['weekday'] = news_df[self.news_date_column].dt.dayofweek
+        news_df['hour'] = datetime_col.dt.hour
+        news_df['weekday'] = datetime_col.dt.dayofweek
         news_df['is_weekend'] = news_df['weekday'].isin([5, 6])
-        news_df['is_market_hours'] = self._is_market_hours(news_df[self.news_date_column])
+        news_df['is_market_hours'] = self._is_market_hours(datetime_col)
         
         return news_df
     
@@ -80,14 +134,42 @@ class DateAligner:
         
         # Convert date column to datetime if not already
         if not pd.api.types.is_datetime64_any_dtype(stock_df[self.stock_date_column]):
-            stock_df[self.stock_date_column] = pd.to_datetime(stock_df[self.stock_date_column])
+            print(f"🔄 Converting {self.stock_date_column} to datetime format...")
+            # Use more flexible datetime parsing
+            try:
+                stock_df[self.stock_date_column] = pd.to_datetime(stock_df[self.stock_date_column], 
+                                                                 format='mixed', 
+                                                                 errors='coerce')
+            except (ValueError, TypeError):
+                # Fallback to basic parsing
+                print("⚠️ Mixed format failed, trying basic parsing...")
+                stock_df[self.stock_date_column] = pd.to_datetime(stock_df[self.stock_date_column], 
+                                                                 errors='coerce')
+        
+        # Check for successful datetime conversion
+        datetime_col = stock_df[self.stock_date_column]
+        null_count = datetime_col.isnull().sum()
+        total_count = len(datetime_col)
+        
+        print(f"📊 Stock datetime conversion result: {total_count - null_count}/{total_count} successful conversions")
+        
+        if null_count > 0:
+            print(f"⚠️ Warning: {null_count} stock dates could not be converted. Removing invalid entries...")
+            # Remove rows with invalid dates
+            stock_df = stock_df.dropna(subset=[self.stock_date_column])
+            datetime_col = stock_df[self.stock_date_column]
+        
+        # Verify we have datetime data before using .dt accessor
+        if not pd.api.types.is_datetime64_any_dtype(datetime_col):
+            raise ValueError(f"Failed to convert {self.stock_date_column} to datetime format. "
+                           f"Data type: {datetime_col.dtype}")
         
         # Extract date part
-        stock_df['trading_date'] = stock_df[self.stock_date_column].dt.date
+        stock_df['trading_date'] = datetime_col.dt.date
         
         return stock_df
     
-    def _adjust_to_trading_day(self, date_obj) -> datetime.date:
+    def _adjust_to_trading_day(self, date_obj) -> date:
         """
         Adjust date to next trading day if it falls on weekend.
         
@@ -101,7 +183,7 @@ class DateAligner:
             date_obj = pd.to_datetime(date_obj).date()
         
         # Convert to datetime if it's a date
-        if isinstance(date_obj, datetime.date):
+        if isinstance(date_obj, date):
             dt = datetime.combine(date_obj, datetime.min.time())
         else:
             dt = date_obj
@@ -125,14 +207,30 @@ class DateAligner:
         Returns:
             Boolean series indicating market hours
         """
-        # Convert to ET timezone if not already
-        if datetime_series.dt.tz is None:
-            datetime_series = datetime_series.dt.tz_localize('UTC').dt.tz_convert(self.timezone)
-        else:
-            datetime_series = datetime_series.dt.tz_convert(self.timezone)
+        # Ensure we have datetime data
+        if not pd.api.types.is_datetime64_any_dtype(datetime_series):
+            print("⚠️ Warning: Non-datetime data passed to _is_market_hours, returning all False")
+            return pd.Series([False] * len(datetime_series), index=datetime_series.index)
         
-        hour = datetime_series.dt.hour
-        minute = datetime_series.dt.minute
+        # Handle timezone conversion more gracefully
+        try:
+            # Convert to ET timezone if not already
+            if datetime_series.dt.tz is None:
+                # Assume UTC if no timezone information
+                datetime_series = datetime_series.dt.tz_localize('UTC', errors='coerce').dt.tz_convert(self.timezone)
+            else:
+                datetime_series = datetime_series.dt.tz_convert(self.timezone)
+        except Exception as e:
+            # If timezone conversion fails, assume already in correct timezone
+            print(f"⚠️ Timezone conversion failed ({e}), assuming data is already in {self.timezone}")
+        
+        # Extract hour and minute safely
+        try:
+            hour = datetime_series.dt.hour
+            minute = datetime_series.dt.minute
+        except Exception as e:
+            print(f"⚠️ Failed to extract hour/minute from datetime series: {e}")
+            return pd.Series([False] * len(datetime_series), index=datetime_series.index)
         
         # Market hours: 9:30 AM - 4:00 PM ET
         market_open_minutes = 9 * 60 + 30  # 9:30 AM in minutes

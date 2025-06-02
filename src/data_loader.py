@@ -12,6 +12,97 @@ import glob
 import warnings
 warnings.filterwarnings('ignore')
 
+class DataLoader:
+    """
+    Simple Data Loader for basic data loading operations.
+    """
+    
+    def __init__(self):
+        """Initialize the DataLoader."""
+        pass
+    
+    def load_data(self, file_path: str, **kwargs) -> pd.DataFrame:
+        """
+        Load data from various file formats.
+        
+        Args:
+            file_path: Path to the data file
+            **kwargs: Additional arguments for pandas read functions
+            
+        Returns:
+            DataFrame with loaded data
+        """
+        try:
+            # Determine file type and load accordingly
+            if file_path.endswith('.csv'):
+                return pd.read_csv(file_path, **kwargs)
+            elif file_path.endswith('.json'):
+                return pd.read_json(file_path, **kwargs)
+            elif file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+                return pd.read_excel(file_path, **kwargs)
+            elif file_path.endswith('.parquet'):
+                return pd.read_parquet(file_path, **kwargs)
+            else:
+                # Default to CSV
+                return pd.read_csv(file_path, **kwargs)
+        except Exception as e:
+            print(f"Error loading data from {file_path}: {str(e)}")
+            return pd.DataFrame()
+    
+    def validate_data(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Validate the loaded data and return summary information.
+        
+        Args:
+            df: DataFrame to validate
+            
+        Returns:
+            Dictionary with validation results
+        """
+        validation = {
+            'shape': df.shape,
+            'columns': list(df.columns),
+            'dtypes': df.dtypes.to_dict(),
+            'missing_values': df.isnull().sum().to_dict(),
+            'duplicate_rows': df.duplicated().sum(),
+            'memory_usage': df.memory_usage(deep=True).sum()
+        }
+        
+        return validation
+    
+    def preprocess_data(self, df: pd.DataFrame, 
+                       drop_duplicates: bool = True,
+                       handle_missing: str = 'none') -> pd.DataFrame:
+        """
+        Basic data preprocessing.
+        
+        Args:
+            df: DataFrame to preprocess
+            drop_duplicates: Whether to drop duplicate rows
+            handle_missing: How to handle missing values ('none', 'drop', 'fill')
+            
+        Returns:
+            Preprocessed DataFrame
+        """
+        result_df = df.copy()
+        
+        # Drop duplicates if requested
+        if drop_duplicates:
+            result_df = result_df.drop_duplicates()
+        
+        # Handle missing values
+        if handle_missing == 'drop':
+            result_df = result_df.dropna()
+        elif handle_missing == 'fill':
+            # Fill numeric columns with median, categorical with mode
+            for col in result_df.columns:
+                if result_df[col].dtype in ['int64', 'float64']:
+                    result_df[col] = result_df[col].fillna(result_df[col].median())
+                else:
+                    result_df[col] = result_df[col].fillna(result_df[col].mode().iloc[0] if len(result_df[col].mode()) > 0 else 'Unknown')
+        
+        return result_df
+
 class FinancialDataLoader:
     """
     Comprehensive Data Loader for Financial Analysis
@@ -206,8 +297,8 @@ class FinancialDataLoader:
         Get price matrix for all stocks
         
         Args:
-            start_date: Start date (YYYY-MM-DD format)
-            end_date: End date (YYYY-MM-DD format)
+            start_date: Start date filter (YYYY-MM-DD)
+            end_date: End date filter (YYYY-MM-DD)
             
         Returns:
             DataFrame with prices for all stocks
@@ -217,7 +308,8 @@ class FinancialDataLoader:
         
         price_data = {}
         for ticker in self.tickers:
-            price_data[ticker] = self.stock_data[ticker]['Close']
+            if 'Close' in self.stock_data[ticker].columns:
+                price_data[ticker] = self.stock_data[ticker]['Close']
         
         price_matrix = pd.DataFrame(price_data)
         
@@ -235,8 +327,8 @@ class FinancialDataLoader:
         Get returns matrix for all stocks
         
         Args:
-            start_date: Start date (YYYY-MM-DD format)
-            end_date: End date (YYYY-MM-DD format)
+            start_date: Start date filter (YYYY-MM-DD)
+            end_date: End date filter (YYYY-MM-DD)
             
         Returns:
             DataFrame with returns for all stocks
@@ -246,7 +338,8 @@ class FinancialDataLoader:
         
         returns_data = {}
         for ticker in self.tickers:
-            returns_data[ticker] = self.stock_data[ticker]['Returns']
+            if 'Returns' in self.stock_data[ticker].columns:
+                returns_data[ticker] = self.stock_data[ticker]['Returns']
         
         returns_matrix = pd.DataFrame(returns_data)
         
